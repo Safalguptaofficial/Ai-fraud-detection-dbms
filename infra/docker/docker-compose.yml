@@ -146,11 +146,15 @@ services:
       - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
     volumes:
       - grafana-data:/var/lib/grafana
-      - ../../infra/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboard.json:/etc/grafana/dashboards/fraud-dbms.json
+      - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml
     networks:
       - backend
+    depends_on:
+      - prometheus
 
 volumes:
   oracle-data:
