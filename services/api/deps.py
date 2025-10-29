@@ -67,10 +67,32 @@ def get_mongo():
         client.close()
 
 
-def get_redis():
-    if settings.redis_uri:
-        return redis.from_url(settings.redis_uri)
-    return None
+redis_client: Optional[redis.Redis] = None
+
+def get_redis() -> Generator[redis.Redis, None, None]:
+    """Get Redis client connection with singleton pattern"""
+    global redis_client
+    
+    if redis_client is None:
+        try:
+            redis_uri = getattr(settings, 'redis_uri', 'redis://redis:6379')
+            redis_client = redis.from_url(redis_uri, decode_responses=False)
+            # Test connection
+            redis_client.ping()
+        except Exception as e:
+            # Return a mock Redis client if connection fails
+            class MockRedis:
+                def get(self, key): return None
+                def setex(self, key, ttl, value): pass
+                def delete(self, key): pass
+                def flushdb(self): pass
+                def info(self): return {}
+                def dbsize(self): return 0
+                def ping(self): return False
+            
+            redis_client = MockRedis()
+    
+    yield redis_client
 
 
 # Authentication

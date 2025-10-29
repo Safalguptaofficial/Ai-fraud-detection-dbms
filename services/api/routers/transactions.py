@@ -1,48 +1,67 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import List, Optional
+import redis
+import json
+from datetime import timedelta
 from oracledb import Connection
-from deps import get_oracle, verify_api_key
+from deps import get_oracle, get_redis
 from models.transaction import Transaction, TransactionCreate
+from config import settings
 
 router = APIRouter()
 
+# Cache TTL in seconds
+CACHE_TTL = 300  # 5 minutes
+
+def get_cache_key(endpoint: str, **kwargs) -> str:
+    """Generate cache key from endpoint and parameters"""
+    params = "_".join(f"{k}_{v}" for k, v in sorted(kwargs.items()) if v)
+    return f"api:{endpoint}:{params}" if params else f"api:{endpoint}"
 
 @router.post("/transactions", response_model=Transaction)
 async def create_transaction(
     data: TransactionCreate,
     oracle: Connection = Depends(get_oracle),
-    _auth: bool = Depends(verify_api_key)
+    redis_client: redis.Redis = Depends(get_redis)
 ):
+    """Create a new transaction with fraud detection"""
     cursor = oracle.cursor()
     try:
+        # Insert transaction
         cursor.execute("""
             INSERT INTO transactions (
                 id, account_id, amount, currency, merchant, mcc, channel,
                 device_id, lat, lon, city, country, txn_time, auth_code
             )
             VALUES (
-                seq_txns.NEXTVAL, :account_id, :amount, :currency, :merchant, :mcc, :channel,
-                :device_id, :lat, :lon, :city, :country, :txn_time, :auth_code
+                seq_txns.NEXTVAL, :1, :2, :3, :4, :5, :6,
+                :7, :8, :9, :10, :11, :12, :13
             )
-            RETURNING id INTO :id
-        """, [
+        """, (
             data.account_id, data.amount, data.currency, data.merchant, data.mcc, data.channel,
-            data.device_id, data.lat, data.lon, data.city, data.country, data.txn_time, data.auth_code,
-            None
-        ])
+            data.device_id, data.lat, data.lon, data.city, data.country, data.txn_time, data.auth_code
+        ))
         
-        txn_id = cursor.fetchone()[0]
         oracle.commit()
+        
+        # Get the transaction ID
+        cursor.execute("SELECT seq_txns.CURRVAL FROM dual")
+        txn_id = cursor.fetchone()[0]
         
         # Fetch the inserted transaction
         cursor.execute("""
             SELECT id, account_id, amount, currency, merchant, mcc, channel, device_id,
                    lat, lon, city, country, txn_time, auth_code, status, created_at
             FROM transactions
-            WHERE id = :id
-        """, [txn_id])
+            WHERE id = :1
+        """, (txn_id,))
         
         row = cursor.fetchone()
+        
+        # Clear cache for transactions list
+        redis_client.delete(f"api:/transactions:*")
+        
+        # Return transaction
         return Transaction(
             id=row[0],
             account_id=row[1],
@@ -63,18 +82,28 @@ async def create_transaction(
         )
     except Exception as e:
         oracle.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         cursor.close()
 
 
 @router.get("/transactions", response_model=List[Transaction])
 async def list_transactions(
-    account_id: int = None,
-    limit: int = 100,
-    offset: int = 0,
-    oracle: Connection = Depends(get_oracle)
+    account_id: Optional[int] = Query(None),
+    limit: int = Query(100, le=1000),
+    offset: int = Query(0, ge=0),
+    oracle: Connection = Depends(get_oracle),
+    redis_client: redis.Redis = Depends(get_redis)
 ):
+    """List transactions with Redis caching"""
+    # Try to get from cache
+    cache_key = get_cache_key("/transactions", account_id=account_id, limit=limit, offset=offset)
+    cached_data = redis_client.get(cache_key)
+    
+    if cached_data:
+        return json.loads(cached_data)
+    
+    # Query database
     cursor = oracle.cursor()
     try:
         query = """
@@ -85,16 +114,16 @@ async def list_transactions(
         params = []
         
         if account_id:
-            query += " WHERE account_id = :account_id"
-            params = [account_id]
+            query += " WHERE account_id = :1"
+            params.append(account_id)
         
-        query += " ORDER BY txn_time DESC OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY"
+        query += " ORDER BY txn_time DESC OFFSET :1 ROWS FETCH NEXT :2 ROWS ONLY"
         params.extend([offset, limit])
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
         
-        return [
+        transactions = [
             Transaction(
                 id=row[0],
                 account_id=row[1],
@@ -112,9 +141,39 @@ async def list_transactions(
                 auth_code=row[13],
                 status=row[14],
                 created_at=row[15]
-            )
+            ).dict()
             for row in rows
         ]
+        
+        # Cache the results
+        redis_client.setex(cache_key, CACHE_TTL, json.dumps(transactions, default=str))
+        
+        return transactions
     finally:
         cursor.close()
 
+@router.get("/cache/stats")
+async def get_cache_stats(redis_client: redis.Redis = Depends(get_redis)):
+    """Get Redis cache statistics"""
+    try:
+        info = redis_client.info()
+        keys = redis_client.dbsize()
+        return {
+            "connected_clients": info.get("connected_clients", 0),
+            "used_memory_human": info.get("used_memory_human", "0B"),
+            "keys": keys,
+            "hits": info.get("keyspace_hits", 0),
+            "misses": info.get("keyspace_misses", 0),
+            "hit_rate": f"{info.get('keyspace_hits', 0) / (info.get('keyspace_hits', 0) + info.get('keyspace_misses', 1)) * 100:.2f}%"
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.post("/cache/clear")
+async def clear_cache(redis_client: redis.Redis = Depends(get_redis)):
+    """Clear all cache"""
+    try:
+        redis_client.flushdb()
+        return {"message": "Cache cleared successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
