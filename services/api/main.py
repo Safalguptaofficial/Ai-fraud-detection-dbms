@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from typing import Dict
 
-from routers import accounts, transactions, alerts, analytics, cases, health, auth
+from routers import accounts, transactions, alerts, analytics, cases, health, auth, risk_scoring, realtime, users, ml_predictions
 from config import settings
 
 # Configure structured logging
@@ -135,6 +135,10 @@ app.include_router(transactions.router, prefix="/v1", tags=["transactions"])
 app.include_router(alerts.router, prefix="/v1", tags=["alerts"])
 app.include_router(analytics.router, prefix="/v1", tags=["analytics"])
 app.include_router(cases.router, prefix="/v1", tags=["cases"])
+app.include_router(risk_scoring.router, prefix="/v1", tags=["risk-scoring"])
+app.include_router(realtime.router, prefix="/v1", tags=["realtime"])
+app.include_router(users.router, prefix="/v1", tags=["users"])
+app.include_router(ml_predictions.router, prefix="/v1", tags=["ml-predictions"])
 
 @app.get("/")
 async def root():

@@ -8,7 +8,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ORACLE_URI = os.getenv("ORACLE_URI", "oracle+oracledb://admin:password@localhost:1521/XE")
+ORACLE_URI = os.getenv("ORACLE_URI")
+POSTGRES_URI = os.getenv("POSTGRES_URI")
+MONGO_URI = os.getenv("MONGO_URI")
+
+if not ORACLE_URI:
+    raise ValueError("❌ ORACLE_URI not found. Please check your .env file or export command.")
 
 
 def generate_customer_id():
@@ -16,7 +21,7 @@ def generate_customer_id():
 
 
 def generate_txn_data(account_id, anomaly_type=None):
-    base_time = datetime.utcnow() - timedelta(days=random.randint(0, 7))
+    base_time = datetime.now(datetime.UTC).replace(tzinfo=None) - timedelta(days=random.randint(0, 7))
     
     if anomaly_type == "midnight_high":
         txn_time = base_time.replace(hour=random.randint(0, 5), minute=random.randint(0, 59))
@@ -59,20 +64,33 @@ def generate_txn_data(account_id, anomaly_type=None):
 
 def seed_oracle():
     print("Seeding Oracle database...")
+    print("🔗 Using Oracle URI:", ORACLE_URI)
     
-    conn = oracledb.connect(ORACLE_URI.replace("oracle+oracledb://", ""))
+    # Parse the Oracle URI: oracle+oracledb://user:password@host:port/service
+    # Convert to oracledb format: user/password@host:port/service
+    connection_string = ORACLE_URI.replace("oracle+oracledb://", "")
+    # Replace the first : with / to separate username from password
+    if ":" in connection_string and "@" in connection_string:
+        username_password, rest = connection_string.split("@", 1)
+        username, password = username_password.split(":", 1)
+        connection_string = f"{username}/{password}@{rest}"
+    
+    print(f"🔌 Connecting with: {username}/***@{rest}")
+    conn = oracledb.connect(connection_string)
     cursor = conn.cursor()
     
     try:
         # Insert accounts
         accounts = []
         for i in range(10):
+            # Create a variable to hold the returned id
+            id_var = cursor.var(int)
             cursor.execute("""
                 INSERT INTO accounts (id, customer_id, status)
                 VALUES (seq_accounts.NEXTVAL, :customer_id, 'ACTIVE')
                 RETURNING id INTO :id
-            """, [generate_customer_id(), None])
-            account_id = cursor.fetchone()[0]
+            """, {"customer_id": generate_customer_id(), "id": id_var})
+            account_id = id_var.getvalue()[0]
             accounts.append(account_id)
         
         conn.commit()

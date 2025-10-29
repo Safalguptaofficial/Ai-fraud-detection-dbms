@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -11,6 +11,26 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+
+  // Auto-login for demo
+  useEffect(() => {
+    const existingToken = localStorage.getItem('auth_token')
+    if (existingToken) {
+      router.push('/dashboard')
+      return
+    }
+
+    // Auto-create demo login
+    console.log('🔐 Creating demo session...')
+    localStorage.setItem('auth_token', 'demo-token-' + Date.now())
+    localStorage.setItem('user', JSON.stringify({
+      id: 1,
+      username: 'demo',
+      name: 'Demo Analyst',
+      role: 'ANALYST'
+    }))
+    setTimeout(() => router.push('/dashboard'), 500)
+  }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

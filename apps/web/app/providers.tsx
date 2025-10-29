@@ -2,13 +2,25 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Toaster } from 'sonner'
+import { ThemeProvider } from './context/ThemeContext'
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient())
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        refetchOnWindowFocus: false,
+        retry: 1,
+      },
+    },
+  }))
   
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <ThemeProvider>
+        <Toaster position="top-right" richColors />
+        {children}
+      </ThemeProvider>
     </QueryClientProvider>
   )
 }
