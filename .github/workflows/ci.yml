@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        cd services/api
+        pip install -r requirements.txt
+        pip install pytest httpx
+    
+    - name: Run linting
+      run: |
+        pip install ruff black
+        ruff check services/
+        black --check services/
+    
+    - name: Run tests
+      run: |
+        pytest tests/ -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+    
+    - name: Install dependencies
+      run: |
+        cd apps/web
+        npm ci
+    
+    - name: Run linting
+      run: |
+        cd apps/web
+        npm run lint
+    
+    - name: Build
+      run: |
+        cd apps/web
+        npm run build
+
