@@ -22,7 +22,7 @@ export default function SimpleTest() {
       setResult(`Success: ${data.length} accounts`)
     } catch (error) {
       console.error('Fetch error:', error)
-      setResult(`Error: ${error.message}`)
+      setResult(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
     setLoading(false)
   }

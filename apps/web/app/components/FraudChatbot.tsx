@@ -96,9 +96,12 @@ export function FraudChatbot() {
     }
 
     // Account lookup
-    if (lowerQuery.includes('account') && lowerQuery.match(/\d+/)) {
-      const accountNum = lowerQuery.match(/\d+/)[0]
-      return `👤 Account #${accountNum} Analysis:\n\n• Status: Active\n• Risk Score: 68/100 (Medium)\n• Transactions (24h): 12\n• Total Amount: $8,450\n• Flagged Alerts: 2\n• Last Activity: 15 min ago\n\nWant to see transaction details?`
+    if (lowerQuery.includes('account')) {
+      const match = lowerQuery.match(/\d+/)
+      if (match) {
+        const accountNum = match[0]
+        return `👤 Account #${accountNum} Analysis:\n\n• Status: Active\n• Risk Score: 68/100 (Medium)\n• Transactions (24h): 12\n• Total Amount: $8,450\n• Flagged Alerts: 2\n• Last Activity: 15 min ago\n\nWant to see transaction details?`
+      }
     }
 
     // Default response

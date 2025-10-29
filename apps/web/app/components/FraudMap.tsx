@@ -46,7 +46,7 @@ export function FraudMap() {
   useEffect(() => {
     // Load Leaflet CSS
     if (typeof window !== 'undefined') {
-      import('leaflet/dist/leaflet.css')
+      import('leaflet/dist/leaflet.css' as any)
       setMapReady(true)
     }
 
