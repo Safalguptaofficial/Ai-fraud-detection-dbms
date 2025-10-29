@@ -1,0 +1,245 @@
+@startuml FraudGuard_ER_Diagram
+
+!define PRIMARY_KEY(x) <b><color:red>PK: x</color></b>
+!define FOREIGN_KEY(x) <color:blue>FK: x</color>
+
+skinparam linetype ortho
+skinparam backgroundColor #FEFEFE
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #333333
+
+title FraudGuard - Entity Relationship Diagram\n(Multi-Database Architecture)
+
+package "Oracle OLTP Database" #LightYellow {
+    
+    entity "ACCOUNTS" as accounts {
+        PRIMARY_KEY(id : NUMBER)
+        --
+        customer_id : VARCHAR2(64)
+        status : VARCHAR2(16)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+    
+    entity "TRANSACTIONS" as transactions {
+        PRIMARY_KEY(id : NUMBER)
+        --
+        FOREIGN_KEY(account_id : NUMBER)
+        amount : NUMBER(12,2)
+        currency : VARCHAR2(8)
+        merchant : VARCHAR2(128)
+        mcc : VARCHAR2(8)
+        channel : VARCHAR2(32)
+        device_id : VARCHAR2(64)
+        lat : NUMBER(9,6)
+        lon : NUMBER(9,6)
+        city : VARCHAR2(64)
+        country : VARCHAR2(64)
+        txn_time : TIMESTAMP
+        auth_code : VARCHAR2(32)
+        status : VARCHAR2(16)
+        created_at : TIMESTAMP
+    }
+    
+    entity "FRAUD_ALERTS" as fraud_alerts {
+        PRIMARY_KEY(id : NUMBER)
+        --
+        FOREIGN_KEY(account_id : NUMBER)
+        FOREIGN_KEY(txn_id : NUMBER)
+        rule_code : VARCHAR2(32)
+        severity : VARCHAR2(16)
+        reason : CLOB
+        created_at : TIMESTAMP
+        handled : NUMBER(1)
+        handled_at : TIMESTAMP
+        handled_by : VARCHAR2(128)
+    }
+    
+    entity "SYSTEM_LOGS" as system_logs_oracle {
+        PRIMARY_KEY(id : NUMBER)
+        --
+        level : VARCHAR2(16)
+        message : CLOB
+        created_at : TIMESTAMP
+    }
+}
+
+package "PostgreSQL OLAP Database" #LightBlue {
+    
+    entity "DIM_ACCOUNT" as dim_account {
+        PRIMARY_KEY(account_id : INTEGER)
+        --
+        customer_id : VARCHAR(64)
+        status : VARCHAR(16)
+        first_txn_date : DATE
+    }
+    
+    entity "DIM_TIME" as dim_time {
+        PRIMARY_KEY(date_key : DATE)
+        --
+        year : INTEGER
+        month : INTEGER
+        day : INTEGER
+        day_of_week : INTEGER
+        is_weekend : BOOLEAN
+    }
+    
+    entity "DIM_GEO" as dim_geo {
+        PRIMARY_KEY(geo_key : SERIAL)
+        --
+        city : VARCHAR(64)
+        country : VARCHAR(64)
+        lat : NUMERIC(9,6)
+        lon : NUMERIC(9,6)
+    }
+    
+    entity "FACT_TRANSACTIONS" as fact_transactions {
+        PRIMARY_KEY(txn_id, day : INTEGER, DATE)
+        --
+        FOREIGN_KEY(account_id : INTEGER)
+        amount : NUMERIC(12,2)
+        currency : VARCHAR(8)
+        mcc : VARCHAR(8)
+        channel : VARCHAR(32)
+        geom : GEOGRAPHY
+        city : VARCHAR(64)
+        country : VARCHAR(64)
+        txn_time : TIMESTAMPTZ
+        hour : SMALLINT (generated)
+        status : VARCHAR(16)
+        created_at : TIMESTAMPTZ
+        --
+        <i>Partitioned by day</i>
+    }
+    
+    entity "ANOMALY_EVENTS" as anomaly_events {
+        PRIMARY_KEY(id : UUID)
+        --
+        FOREIGN_KEY(account_id : INTEGER)
+        FOREIGN_KEY(txn_id : INTEGER)
+        rule : VARCHAR(64)
+        score : NUMERIC(10,4)
+        detected_at : TIMESTAMPTZ
+        severity : VARCHAR(16)
+        extra : JSONB
+    }
+    
+    entity "ETL_CHECKPOINTS" as etl_checkpoints {
+        PRIMARY_KEY(id : SERIAL)
+        --
+        source_table : VARCHAR(128)
+        last_id : INTEGER
+        last_timestamp : TIMESTAMPTZ
+        updated_at : TIMESTAMPTZ
+    }
+    
+    note right of fact_transactions
+        <b>Materialized Views:</b>
+        • mv_amount_buckets_hourly
+        • mv_velocity_by_account
+        • mv_time_of_day_stats
+    end note
+}
+
+package "MongoDB NoSQL Database" #LightGreen {
+    
+    entity "FRAUD_CASES" as fraud_cases {
+        PRIMARY_KEY(_id : ObjectId)
+        --
+        caseId : String (unique)
+        accountId : Integer (ref)
+        txnIds : [Integer] (ref)
+        investigator : String
+        status : String (enum)
+        tags : [String]
+        <b>notes : [Object]</b>
+        ├─ author : String
+        ├─ content : String
+        └─ createdAt : Date
+        <b>attachments : [Object]</b>
+        ├─ gridFsId : String
+        ├─ filename : String
+        └─ contentType : String
+        createdAt : Date
+        updatedAt : Date
+    }
+    
+    entity "SAR_REPORTS" as sar_reports {
+        PRIMARY_KEY(_id : ObjectId)
+        --
+        reportId : String (unique)
+        accountId : Integer (ref)
+        suspiciousActivity : String
+        amount : Double
+        reportDate : Date
+        filedBy : String
+        status : String (enum)
+    }
+    
+    entity "CUSTOMER_COMPLAINTS" as complaints {
+        PRIMARY_KEY(_id : ObjectId)
+        --
+        complaintId : String (unique)
+        customerId : String
+        accountId : Integer (ref)
+        subject : String
+        description : String
+        status : String (enum)
+        priority : String (enum)
+        createdAt : Date
+    }
+    
+    entity "SYSTEM_LOGS" as system_logs_mongo {
+        PRIMARY_KEY(_id : ObjectId)
+        --
+        level : String
+        message : String
+        module : String
+        createdAt : Date
+        --
+        <i>TTL Index: 30 days</i>
+    }
+}
+
+' Relationships within Oracle
+accounts ||--o{ transactions : "has many"
+accounts ||--o{ fraud_alerts : "generates"
+transactions ||--o{ fraud_alerts : "triggers"
+
+' Relationships within PostgreSQL
+dim_account ||--o{ fact_transactions : "relates to"
+fact_transactions ||--o{ anomaly_events : "analyzed in"
+
+' Cross-database relationships (logical, managed by application)
+accounts ..|> dim_account : "ETL sync"
+transactions ..|> fact_transactions : "ETL sync"
+accounts ..o{ fraud_cases : "referenced by\n(application layer)"
+transactions ..o{ fraud_cases : "referenced by\n(application layer)"
+fraud_cases ||--o{ sar_reports : "can generate"
+
+' Legend
+legend right
+    |= Line Type |= Meaning |
+    | —— | Foreign Key (same DB) |
+    | ··· | Logical Reference (cross-DB) |
+    | ║ | One-to-Many |
+    | ○ | Zero or More |
+    
+    |= Database |= Purpose |
+    | <back:LightYellow>Oracle</back> | OLTP (Transactions) |
+    | <back:LightBlue>PostgreSQL</back> | OLAP (Analytics) |
+    | <back:LightGreen>MongoDB</back> | Document Storage |
+end legend
+
+note bottom of accounts
+    <b>Polyglot Persistence Strategy:</b>
+    
+    • Oracle: High-volume transactional data
+    • PostgreSQL: Complex analytics queries
+    • MongoDB: Flexible document storage
+    
+    ETL Process syncs data between systems
+end note
+
+@enduml
+

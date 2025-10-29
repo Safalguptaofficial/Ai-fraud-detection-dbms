@@ -1,0 +1,221 @@
+%% FraudGuard - Entity Relationship Diagram (Mermaid Format)
+%% This file can be rendered using Mermaid.js or GitHub's Mermaid support
+
+%% =====================================================
+%% ORACLE OLTP DATABASE - Transactional System
+%% =====================================================
+
+erDiagram
+    ACCOUNTS ||--o{ TRANSACTIONS : "has"
+    ACCOUNTS ||--o{ FRAUD_ALERTS : "generates"
+    TRANSACTIONS ||--o{ FRAUD_ALERTS : "triggers"
+    
+    ACCOUNTS {
+        NUMBER id PK "Primary Key"
+        VARCHAR2 customer_id "Customer Identifier"
+        VARCHAR2 status "ACTIVE|FROZEN|CLOSED"
+        TIMESTAMP created_at "Creation timestamp"
+        TIMESTAMP updated_at "Last update"
+    }
+    
+    TRANSACTIONS {
+        NUMBER id PK "Primary Key"
+        NUMBER account_id FK "Foreign Key to ACCOUNTS"
+        NUMBER amount "Transaction amount"
+        VARCHAR2 currency "Currency code (USD, EUR, etc)"
+        VARCHAR2 merchant "Merchant name"
+        VARCHAR2 mcc "Merchant Category Code"
+        VARCHAR2 channel "ATM|POS|ONLINE|MOBILE|PHONE"
+        VARCHAR2 device_id "Device identifier"
+        NUMBER lat "Latitude"
+        NUMBER lon "Longitude"
+        VARCHAR2 city "Transaction city"
+        VARCHAR2 country "Transaction country"
+        TIMESTAMP txn_time "Transaction timestamp"
+        VARCHAR2 auth_code "Authorization code"
+        VARCHAR2 status "APPROVED|DECLINED|REVIEW"
+        TIMESTAMP created_at "Record creation time"
+    }
+    
+    FRAUD_ALERTS {
+        NUMBER id PK "Primary Key"
+        NUMBER account_id FK "Foreign Key to ACCOUNTS"
+        NUMBER txn_id FK "Foreign Key to TRANSACTIONS"
+        VARCHAR2 rule_code "Alert rule identifier"
+        VARCHAR2 severity "LOW|MEDIUM|HIGH"
+        CLOB reason "Alert reason description"
+        TIMESTAMP created_at "Alert creation time"
+        NUMBER handled "Boolean: 0=false, 1=true"
+        TIMESTAMP handled_at "Resolution timestamp"
+        VARCHAR2 handled_by "User who handled alert"
+    }
+    
+    SYSTEM_LOGS {
+        NUMBER id PK "Primary Key"
+        VARCHAR2 level "DEBUG|INFO|WARN|ERROR"
+        CLOB message "Log message"
+        TIMESTAMP created_at "Log timestamp"
+    }
+
+%% =====================================================
+%% POSTGRESQL OLAP DATABASE - Analytics System
+%% =====================================================
+
+erDiagram
+    DIM_ACCOUNT ||--o{ FACT_TRANSACTIONS : "relates to"
+    FACT_TRANSACTIONS ||--o{ ANOMALY_EVENTS : "analyzed in"
+    
+    DIM_ACCOUNT {
+        INTEGER account_id PK "Primary Key"
+        VARCHAR customer_id "Customer Identifier"
+        VARCHAR status "Account status"
+        DATE first_txn_date "First transaction date"
+    }
+    
+    DIM_TIME {
+        DATE date_key PK "Primary Key"
+        INTEGER year "Year"
+        INTEGER month "Month"
+        INTEGER day "Day of month"
+        INTEGER day_of_week "Day of week (0-6)"
+        BOOLEAN is_weekend "Weekend flag"
+    }
+    
+    DIM_GEO {
+        SERIAL geo_key PK "Primary Key"
+        VARCHAR city "City name"
+        VARCHAR country "Country name"
+        NUMERIC lat "Latitude"
+        NUMERIC lon "Longitude"
+    }
+    
+    FACT_TRANSACTIONS {
+        INTEGER txn_id PK "Transaction ID"
+        DATE day PK "Partition key"
+        INTEGER account_id FK "Foreign Key to DIM_ACCOUNT"
+        NUMERIC amount "Transaction amount"
+        VARCHAR currency "Currency code"
+        VARCHAR mcc "Merchant Category Code"
+        VARCHAR channel "Transaction channel"
+        GEOGRAPHY geom "Geographic point (PostGIS)"
+        VARCHAR city "City"
+        VARCHAR country "Country"
+        TIMESTAMPTZ txn_time "Transaction timestamp"
+        SMALLINT hour "Hour of day (generated)"
+        VARCHAR status "Transaction status"
+        TIMESTAMPTZ created_at "Record creation time"
+    }
+    
+    ANOMALY_EVENTS {
+        UUID id PK "Primary Key"
+        INTEGER account_id FK "Account reference"
+        INTEGER txn_id FK "Transaction reference"
+        VARCHAR rule "Anomaly rule name"
+        NUMERIC score "Anomaly score"
+        TIMESTAMPTZ detected_at "Detection timestamp"
+        VARCHAR severity "Severity level"
+        JSONB extra "Additional metadata"
+    }
+    
+    ETL_CHECKPOINTS {
+        SERIAL id PK "Primary Key"
+        VARCHAR source_table "Source table name"
+        INTEGER last_id "Last processed ID"
+        TIMESTAMPTZ last_timestamp "Last processed timestamp"
+        TIMESTAMPTZ updated_at "Checkpoint update time"
+    }
+
+%% Note: Materialized Views are not shown in ERD as they are derived entities
+%% - mv_amount_buckets_hourly
+%% - mv_velocity_by_account  
+%% - mv_time_of_day_stats
+
+%% =====================================================
+%% MONGODB NoSQL DATABASE - Document Store
+%% =====================================================
+
+%% Note: MongoDB uses flexible schema with embedded documents
+%% Relationships are logical (via accountId/txnId references)
+
+%% FRAUD_CASES Collection
+%% {
+%%   _id: ObjectId,
+%%   caseId: String (unique),
+%%   accountId: Integer (ref: ACCOUNTS.id in Oracle),
+%%   txnIds: [Integer] (refs: TRANSACTIONS.id in Oracle),
+%%   investigator: String,
+%%   status: "OPEN|INVESTIGATING|RESOLVED|ESCALATED",
+%%   tags: [String],
+%%   notes: [
+%%     {
+%%       author: String,
+%%       content: String,
+%%       createdAt: Date
+%%     }
+%%   ],
+%%   attachments: [
+%%     {
+%%       gridFsId: String,
+%%       filename: String,
+%%       contentType: String
+%%     }
+%%   ],
+%%   createdAt: Date,
+%%   updatedAt: Date
+%% }
+
+%% SAR_REPORTS Collection
+%% {
+%%   _id: ObjectId,
+%%   reportId: String (unique),
+%%   accountId: Integer (ref: ACCOUNTS.id in Oracle),
+%%   suspiciousActivity: String,
+%%   amount: Double,
+%%   reportDate: Date,
+%%   filedBy: String,
+%%   status: "DRAFT|SUBMITTED|ACCEPTED"
+%% }
+
+%% CUSTOMER_COMPLAINTS Collection
+%% {
+%%   _id: ObjectId,
+%%   complaintId: String (unique),
+%%   customerId: String,
+%%   accountId: Integer (ref: ACCOUNTS.id in Oracle),
+%%   subject: String,
+%%   description: String,
+%%   status: "OPEN|IN_PROGRESS|RESOLVED",
+%%   priority: "LOW|MEDIUM|HIGH",
+%%   createdAt: Date
+%% }
+
+%% SYSTEM_LOGS Collection (TTL: 30 days)
+%% {
+%%   _id: ObjectId,
+%%   level: String,
+%%   message: String,
+%%   module: String,
+%%   createdAt: Date (expires after 30 days)
+%% }
+
+%% =====================================================
+%% CROSS-DATABASE RELATIONSHIPS (Application Layer)
+%% =====================================================
+
+%% The following relationships are maintained in the application layer:
+%%
+%% 1. Oracle ACCOUNTS.id <--> PostgreSQL DIM_ACCOUNT.account_id
+%%    Synchronized via ETL process
+%%
+%% 2. Oracle TRANSACTIONS.id <--> PostgreSQL FACT_TRANSACTIONS.txn_id
+%%    Synchronized via ETL process
+%%
+%% 3. Oracle ACCOUNTS.id <--> MongoDB FRAUD_CASES.accountId
+%%    Referenced in application logic
+%%
+%% 4. Oracle TRANSACTIONS.id <--> MongoDB FRAUD_CASES.txnIds[]
+%%    Referenced in application logic
+%%
+%% 5. PostgreSQL ANOMALY_EVENTS <--> Oracle FRAUD_ALERTS
+%%    Related by account_id and txn_id
+
