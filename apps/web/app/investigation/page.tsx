@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { FileCheck, Plus, Clock, User, Paperclip, MessageSquare, Eye, Edit2, Trash2, CheckCircle, XCircle } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface TimelineEvent {
   id: number
@@ -48,7 +49,60 @@ export default function InvestigationPage() {
   }, [])
 
   const fetchInvestigations = async () => {
-    // Mock data
+    setLoading(true)
+    try {
+      // Try to fetch from real API first
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const token = localStorage.getItem('auth_token')
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      } else {
+        headers['X-API-Key'] = 'fgk_live_demo_api_key_12345'
+      }
+
+      const response = await fetch(`${API_URL}/v1/cases`, { headers })
+      
+      if (response.ok) {
+        const casesData = await response.json()
+        // Transform API data to match Investigation interface
+        const transformedCases: Investigation[] = casesData.map((caseItem: any) => ({
+          id: caseItem.id || Math.random(),
+          caseId: caseItem.caseId || `CASE-${caseItem.id}`,
+          title: `Case ${caseItem.caseId} - Account ${caseItem.accountId}`,
+          status: caseItem.status?.toLowerCase() || 'open',
+          priority: caseItem.priority || 'medium',
+          assignee: caseItem.investigator || 'Unassigned',
+          created_at: caseItem.createdAt || new Date().toISOString(),
+          updated_at: caseItem.updatedAt || new Date().toISOString(),
+          timeline: (caseItem.notes || []).map((note: any, idx: number) => ({
+            id: idx + 1,
+            timestamp: note.createdAt || new Date().toISOString(),
+            type: 'note' as const,
+            description: note.content,
+            user: note.author || 'System'
+          })),
+          evidence: (caseItem.attachments || []).map((att: any, idx: number) => ({
+            id: idx + 1,
+            name: att.filename || 'attachment',
+            type: att.contentType?.split('/')[1]?.toUpperCase() || 'FILE',
+            size: 'N/A',
+            uploadedBy: 'System',
+            uploadedAt: new Date().toISOString()
+          })),
+          notes: (caseItem.notes || []).map((n: any) => n.content).join('\n')
+        }))
+        setInvestigations(transformedCases)
+        setLoading(false)
+        return
+      }
+    } catch (error) {
+      console.error('Failed to fetch investigations from API:', error)
+    }
+
+    // Fallback to mock data if API fails
     const mockData: Investigation[] = [
       {
         id: 1,
@@ -268,7 +322,14 @@ export default function InvestigationPage() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 p-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Investigations</h2>
-                <button className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg">
+                <button 
+                  onClick={() => {
+                    // Navigate to cases page to create new investigation
+                    window.location.href = '/cases'
+                  }}
+                  className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                  title="Create New Investigation"
+                >
                   <Plus className="w-5 h-5" />
                 </button>
               </div>
@@ -420,7 +481,14 @@ export default function InvestigationPage() {
                             </p>
                           </div>
                         </div>
-                        <button className="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">
+                        <button 
+                          onClick={() => {
+                            // In production, this would open the file or download it
+                            toast.info(`Viewing ${item.name} (would open file in production)`)
+                          }}
+                          className="p-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                          title={`View ${item.name}`}
+                        >
                           <Eye className="w-4 h-4" />
                         </button>
                       </div>
@@ -433,7 +501,13 @@ export default function InvestigationPage() {
                   </div>
                 )}
                 
-                <button className="w-full mt-4 px-4 py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-blue-500 dark:hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                <button 
+                  onClick={() => {
+                    // In production, this would open a file upload dialog
+                    toast.info('Evidence upload feature (would open file dialog in production)')
+                  }}
+                  className="w-full mt-4 px-4 py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-blue-500 dark:hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                >
                   <Plus className="w-4 h-4 inline mr-2" />
                   Upload Evidence
                 </button>

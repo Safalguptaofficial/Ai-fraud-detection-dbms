@@ -32,6 +32,59 @@ export function NetworkGraph({ data }: NetworkGraphProps) {
   const [graphData, setGraphData] = useState<{ nodes: Node[]; links: Link[] }>(
     data || generateMockData()
   )
+  const [loading, setLoading] = useState(!data)
+
+  // Fetch network graph data from API
+  useEffect(() => {
+    if (data) return // Use provided data
+    
+    const fetchNetworkData = async () => {
+      try {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+        const token = localStorage.getItem('auth_token')
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        }
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        } else {
+          headers['X-API-Key'] = 'fgk_live_demo_api_key_12345'
+        }
+
+        const response = await fetch(`${API_URL}/v1/network/graph?limit=50`, { headers })
+        
+        if (response.ok) {
+          const apiData = await response.json()
+          // Transform API data to match component format
+          const transformedNodes: Node[] = apiData.nodes.map((n: any) => ({
+            id: n.id,
+            type: n.type as Node['type'],
+            label: n.label,
+            risk: n.risk as Node['risk']
+          }))
+          
+          const transformedLinks: Link[] = apiData.links.map((l: any) => ({
+            source: l.source,
+            target: l.target,
+            type: l.type as Link['type'],
+            amount: l.amount
+          }))
+          
+          setGraphData({ nodes: transformedNodes, links: transformedLinks })
+          setLoading(false)
+        } else {
+          console.warn('Failed to fetch network graph, using mock data')
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('Error fetching network graph:', error)
+        setLoading(false)
+        // Keep mock data as fallback
+      }
+    }
+
+    fetchNetworkData()
+  }, [data])
 
   useEffect(() => {
     const canvas = canvasRef.current

@@ -3,18 +3,20 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, FileText, Database, TrendingUp, MapPin, Network, Users, FileCheck, Brain, Menu, X, ChevronDown } from 'lucide-react'
+import { LayoutDashboard, FileText, Database, TrendingUp, MapPin, Network, Users, FileCheck, Brain, Menu, X, ChevronDown, Shield, CreditCard, Upload } from 'lucide-react'
 import { NotificationCenter } from './NotificationCenter'
 import { ThemeToggle } from './ThemeToggle'
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', group: 'main' },
-  { href: '/dashboard-enhanced', icon: TrendingUp, label: 'Analytics', group: 'main' },
+  { href: '/billing', icon: CreditCard, label: 'Billing', group: 'main' },
+  { href: '/data/upload', icon: Upload, label: 'Upload Data', group: 'main' },
   { href: '/ml-model', icon: Brain, label: 'ML Model', group: 'advanced' },
   { href: '/network-graph', icon: Network, label: 'Network', group: 'advanced' },
   { href: '/fraud-map', icon: MapPin, label: 'Map', group: 'advanced' },
   { href: '/cases', icon: FileText, label: 'Cases', group: 'management' },
   { href: '/investigation', icon: FileCheck, label: 'Investigations', group: 'management' },
+  { href: '/settings/mfa', icon: Shield, label: 'MFA Security', group: 'settings' },
   { href: '/rbac', icon: Users, label: 'Users', group: 'admin' },
   { href: '/crud-monitor', icon: Database, label: 'Monitor', group: 'admin' },
 ]
@@ -23,6 +25,12 @@ export function Navigation() {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // Hide navigation on login page
+  if (pathname === '/login') {
+    return null
+  }
 
   return (
     <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm transition-colors sticky top-0 z-40">
@@ -134,6 +142,45 @@ export function Navigation() {
                 </Link>
               )
             })}
+
+            {/* Settings Dropdown */}
+            {navItems.filter(item => item.group === 'settings').length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setSettingsOpen(!settingsOpen)}
+                  className="inline-flex items-center px-2 py-2 text-sm font-medium rounded-lg transition-colors text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  <Shield className="w-4 h-4" />
+                </button>
+                
+                {settingsOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setSettingsOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-20">
+                      {navItems.filter(item => item.group === 'settings').map((item) => {
+                        const Icon = item.icon
+                        const isActive = pathname === item.href
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setSettingsOpen(false)}
+                            className={`flex items-center px-4 py-2 text-sm ${
+                              isActive
+                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            }`}
+                          >
+                            <Icon className="w-4 h-4 mr-2" />
+                            {item.label}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           
           {/* Right side: Theme + Notifications */}

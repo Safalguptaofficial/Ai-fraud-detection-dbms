@@ -2,8 +2,9 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Providers } from './providers'
 import { Navigation } from './components/Navigation'
-import { CommandPalette } from './components/CommandPalette'
-import { FraudChatbot } from './components/FraudChatbot'
+import { Toaster } from 'sonner'
+// import { CommandPalette } from './components/CommandPalette'
+// import { FraudChatbot } from './components/FraudChatbot'
 
 export const metadata: Metadata = {
   title: 'Fraud Detection Portal - AI-Powered Financial Crime Detection',
@@ -24,9 +25,10 @@ export default function RootLayout({
       </head>
       <body className="font-inter">
         <Providers>
+          <Toaster position="top-right" richColors />
           <Navigation />
-          <CommandPalette />
-          <FraudChatbot />
+          {/* <CommandPalette /> */}
+          {/* <FraudChatbot /> */}
           {children}
         </Providers>
       </body>

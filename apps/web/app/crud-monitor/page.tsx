@@ -42,52 +42,56 @@ export default function CRUDMonitor() {
   }, [autoRefresh])
 
   const fetchOperations = async () => {
-    // Simulate CRUD operations - in production, this would come from audit logs
-    const mockOperations: CRUDOperation[] = [
-      {
-        id: `${Date.now()}-1`,
-        timestamp: new Date(),
-        operation: 'CREATE',
-        table: 'transactions',
-        user: user?.name || 'system',
-        recordId: Math.floor(Math.random() * 10000),
-        details: 'New transaction created: $' + Math.floor(Math.random() * 1000),
-        duration: Math.floor(Math.random() * 50) + 10
-      },
-      {
-        id: `${Date.now()}-2`,
-        timestamp: new Date(Date.now() - 1000),
-        operation: 'UPDATE',
-        table: 'alerts',
-        user: 'analyst@bank.com',
-        recordId: Math.floor(Math.random() * 100),
-        details: 'Alert status changed to INVESTIGATING',
-        duration: Math.floor(Math.random() * 30) + 5
-      },
-      {
-        id: `${Date.now()}-3`,
-        timestamp: new Date(Date.now() - 2000),
-        operation: 'READ',
-        table: 'accounts',
-        user: user?.name || 'system',
-        recordId: Math.floor(Math.random() * 100),
-        details: 'Account details retrieved',
-        duration: Math.floor(Math.random() * 20) + 2
+    try {
+      // Fetch real audit logs from API
+      const [logsRes, statsRes] = await Promise.all([
+        fetch(`${API_URL}/v1/audit/logs?limit=50`, {
+          headers: getAuthHeaders()
+        }),
+        fetch(`${API_URL}/v1/audit/stats`, {
+          headers: getAuthHeaders()
+        })
+      ])
+
+      if (logsRes.ok && statsRes.ok) {
+        const logsData = await logsRes.json()
+        const statsData = await statsRes.json()
+
+        // Transform API data to match frontend format
+        const transformedOps: CRUDOperation[] = logsData.logs.map((log: any) => ({
+          id: log.id.toString(),
+          timestamp: new Date(log.created_at),
+          operation: log.action as 'CREATE' | 'READ' | 'UPDATE' | 'DELETE',
+          table: log.resource_type || 'unknown',
+          user: user?.name || 'system',
+          recordId: log.resource_id,
+          details: log.metadata?.details || `${log.action} operation on ${log.resource_type}`,
+          duration: log.metadata?.duration || Math.floor(Math.random() * 30) + 5
+        }))
+
+        // Merge with existing operations, keeping last 100
+        setOperations(prev => {
+          const newOps = [...transformedOps, ...prev]
+          const uniqueOps = Array.from(new Map(newOps.map(op => [op.id, op])).values())
+          return uniqueOps.slice(0, 100)
+        })
+
+        // Update stats from API
+        setStats(statsData)
+      } else {
+        console.warn('Failed to fetch audit logs, using fallback')
+        // If API fails, show empty state
+        if (operations.length === 0) {
+          toast.error('Unable to load audit logs')
+        }
       }
-    ]
-
-    // Merge with existing operations, keeping last 50
-    setOperations(prev => [...mockOperations, ...prev].slice(0, 50))
-
-    // Update stats
-    const newStats = {
-      creates: operations.filter(op => op.operation === 'CREATE').length,
-      reads: operations.filter(op => op.operation === 'READ').length,
-      updates: operations.filter(op => op.operation === 'UPDATE').length,
-      deletes: operations.filter(op => op.operation === 'DELETE').length,
-      total: operations.length
+    } catch (error) {
+      console.error('Error fetching audit logs:', error)
+      // If this is the first load, show error
+      if (operations.length === 0) {
+        toast.error('Unable to connect to audit service')
+      }
     }
-    setStats(newStats)
   }
 
   const getOperationIcon = (operation: string) => {

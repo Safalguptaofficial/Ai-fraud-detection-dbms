@@ -20,6 +20,13 @@ export function NotificationCenter() {
   const [soundEnabled, setSoundEnabled] = useState(true)
 
   useEffect(() => {
+    // Listen for toggle event from CommandPalette
+    const handleToggle = () => {
+      setShowPanel(prev => !prev)
+    }
+    
+    window.addEventListener('toggleNotifications', handleToggle)
+    
     // Simulate real-time notifications
     const interval = setInterval(() => {
       if (Math.random() > 0.7) {
@@ -50,7 +57,10 @@ export function NotificationCenter() {
       }
     }, 10000) // Check every 10 seconds
     
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('toggleNotifications', handleToggle)
+    }
   }, [soundEnabled])
 
   const getRandomTitle = () => {

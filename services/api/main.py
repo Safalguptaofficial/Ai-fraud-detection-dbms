@@ -8,8 +8,16 @@ import time
 from datetime import datetime
 from typing import Dict
 
-from routers import accounts, transactions, alerts, analytics, cases, health, auth, risk_scoring, realtime, users, ml_predictions
+from routers import accounts, transactions, alerts, analytics, cases, health, auth, tenants
+from routers import auth_sso, billing, ingestion, portal  # Phase 2 & 3 routers
+from routers import webhooks  # Payment gateway webhooks
+from routers import realtime  # Real-time SSE endpoints
+from routers import network  # Network graph and fraud map
+from routers import ml_predictions  # ML model predictions
+from routers import users  # RBAC user management
+from routers import audit  # Audit logs and CRUD monitoring
 from config import settings
+from middleware import TenantMiddleware
 
 # Configure structured logging
 logging.basicConfig(
@@ -33,11 +41,15 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# Tenant middleware - extracts tenant from request
+app.add_middleware(TenantMiddleware)
 
 # Rate limiting dictionary (simple in-memory, use Redis in production)
 rate_limit_store: Dict[str, list] = {}
@@ -129,16 +141,27 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Include routers
 app.include_router(health.router, tags=["health"])
+app.include_router(tenants.router, tags=["tenants"])  # Multi-tenancy router
 app.include_router(auth.router, prefix="/v1/auth", tags=["authentication"])
+
+# Phase 2 & 3 Routers
+app.include_router(auth_sso.router, tags=["authentication", "sso", "mfa"])  # SSO & MFA
+app.include_router(billing.router, tags=["billing", "subscriptions"])  # Stripe billing
+app.include_router(ingestion.router, tags=["data-ingestion"])  # Data ingestion
+app.include_router(webhooks.router, tags=["webhooks", "payment-gateways"])  # Payment webhooks
+app.include_router(realtime.router, prefix="/v1", tags=["realtime", "sse"])  # Real-time SSE
+app.include_router(portal.router, tags=["portal", "onboarding"])  # Customer portal
+
+# Original routers
 app.include_router(accounts.router, prefix="/v1", tags=["accounts"])
 app.include_router(transactions.router, prefix="/v1", tags=["transactions"])
 app.include_router(alerts.router, prefix="/v1", tags=["alerts"])
 app.include_router(analytics.router, prefix="/v1", tags=["analytics"])
 app.include_router(cases.router, prefix="/v1", tags=["cases"])
-app.include_router(risk_scoring.router, prefix="/v1", tags=["risk-scoring"])
-app.include_router(realtime.router, prefix="/v1", tags=["realtime"])
-app.include_router(users.router, prefix="/v1", tags=["users"])
-app.include_router(ml_predictions.router, prefix="/v1", tags=["ml-predictions"])
+app.include_router(ml_predictions.router, prefix="/v1", tags=["ml", "predictions"])  # ML predictions
+app.include_router(users.router, prefix="/v1", tags=["users", "rbac"])  # User management & RBAC
+app.include_router(audit.router, prefix="/v1", tags=["audit", "monitoring"])  # Audit logs & CRUD monitoring
+app.include_router(network.router, tags=["network", "visualization"])  # Network graph & fraud map
 
 @app.get("/")
 async def root():

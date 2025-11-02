@@ -16,6 +16,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 interface Alert {
   id: number
   account_id: number
+  txn_id?: number
   rule_code: string
   severity: string
   created_at: string
@@ -109,11 +110,21 @@ export default function EnhancedDashboard() {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     const data = []
     
+    // Group transactions by day of week and hour
+    const txnByTime: Record<string, number> = {}
+    
+    transactions.forEach(txn => {
+      const date = new Date(txn.txn_time)
+      const day = days[date.getDay()]
+      const hour = date.getHours()
+      const key = `${day}-${hour}`
+      txnByTime[key] = (txnByTime[key] || 0) + 1
+    })
+    
     for (const day of days) {
       for (let hour = 0; hour < 24; hour++) {
-        // Simulate data - in production, fetch real data
-        const count = Math.floor(Math.random() * 20)
-        data.push({ day, hour, count })
+        const key = `${day}-${hour}`
+        data.push({ day, hour, count: txnByTime[key] || 0 })
       }
     }
     
@@ -121,22 +132,57 @@ export default function EnhancedDashboard() {
   }
 
   const generateRiskData = () => {
-    return [
-      { range: '0-20', count: Math.floor(Math.random() * 100) + 50 },
-      { range: '21-40', count: Math.floor(Math.random() * 80) + 30 },
-      { range: '41-60', count: Math.floor(Math.random() * 60) + 20 },
-      { range: '61-80', count: Math.floor(Math.random() * 40) + 10 },
-      { range: '81-100', count: Math.floor(Math.random() * 30) + 5 },
+    // Calculate risk distribution from transactions
+    const ranges = [
+      { range: '0-20', count: 0 },
+      { range: '21-40', count: 0 },
+      { range: '41-60', count: 0 },
+      { range: '61-80', count: 0 },
+      { range: '81-100', count: 0 },
     ]
+    
+    transactions.forEach(txn => {
+      const score = txn.risk_score || 0
+      if (score <= 20) ranges[0].count++
+      else if (score <= 40) ranges[1].count++
+      else if (score <= 60) ranges[2].count++
+      else if (score <= 80) ranges[3].count++
+      else ranges[4].count++
+    })
+    
+    return ranges
   }
 
   const generateMerchantData = () => {
-    const merchants = ['ATM-CORP', 'AMAZON', 'HOTEL', 'RESTAURANT', 'GAS_STATION']
-    return merchants.map(merchant => ({
-      merchant,
-      fraudCount: Math.floor(Math.random() * 50) + 10,
-      totalAmount: Math.floor(Math.random() * 50000) + 5000,
-    }))
+    // Group transactions by merchant and calculate fraud alerts
+    const merchantMap: Record<string, { fraudCount: number, totalAmount: number }> = {}
+    
+    transactions.forEach(txn => {
+      if (!merchantMap[txn.merchant]) {
+        merchantMap[txn.merchant] = { fraudCount: 0, totalAmount: 0 }
+      }
+      merchantMap[txn.merchant].totalAmount += txn.amount
+    })
+    
+    // Count fraud alerts per merchant
+    alerts.forEach(alert => {
+      const txn = alert.txn_id 
+        ? transactions.find(t => t.id === alert.txn_id)
+        : transactions.find(t => t.account_id === alert.account_id)
+      if (txn && merchantMap[txn.merchant]) {
+        merchantMap[txn.merchant].fraudCount++
+      }
+    })
+    
+    // Sort by fraud count and take top 5
+    return Object.entries(merchantMap)
+      .map(([merchant, data]) => ({
+        merchant,
+        fraudCount: data.fraudCount,
+        totalAmount: data.totalAmount
+      }))
+      .sort((a, b) => b.fraudCount - a.fraudCount)
+      .slice(0, 5)
   }
 
   const handleExportAlerts = () => {
@@ -157,6 +203,11 @@ export default function EnhancedDashboard() {
 
   const highSeverityCount = alerts.filter(a => a.severity === 'HIGH').length
   const mediumSeverityCount = alerts.filter(a => a.severity === 'MEDIUM').length
+  
+  // Calculate real detection rate: (alerts / transactions) * 100
+  const detectionRate = transactions.length > 0 
+    ? ((alerts.length / transactions.length) * 100).toFixed(1)
+    : '0.0'
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-8 transition-colors">
@@ -246,8 +297,8 @@ export default function EnhancedDashboard() {
               <h3 className="text-sm font-medium opacity-90">Detection Rate</h3>
               <TrendingUp className="w-5 h-5 opacity-75" />
             </div>
-            <p className="text-4xl font-bold">94.2%</p>
-            <p className="text-xs opacity-75 mt-1">System accuracy</p>
+            <p className="text-4xl font-bold">{detectionRate}%</p>
+            <p className="text-xs opacity-75 mt-1">Alerts per transaction</p>
           </div>
         </div>
 

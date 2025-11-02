@@ -233,7 +233,6 @@ end legend
 
 note bottom of accounts
     <b>Polyglot Persistence Strategy:</b>
-    
     • Oracle: High-volume transactional data
     • PostgreSQL: Complex analytics queries
     • MongoDB: Flexible document storage

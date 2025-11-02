@@ -1,7 +1,11 @@
 'use client'
 
 import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { getAuthHeaders } from '../utils/auth'
+import { toast } from 'sonner'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 interface Transaction {
   id: number
@@ -26,6 +30,8 @@ interface TransactionModalProps {
 }
 
 export function TransactionModal({ transaction, onClose }: TransactionModalProps) {
+  const [loading, setLoading] = useState(false)
+
   useEffect(() => {
     if (transaction) {
       document.body.style.overflow = 'hidden'
@@ -36,6 +42,124 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
       document.body.style.overflow = 'unset'
     }
   }, [transaction])
+
+  const handleFlagAsFraud = async () => {
+    if (!transaction) return
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/v1/alerts/flag-transaction`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          txn_id: transaction.id,
+          account_id: transaction.account_id,
+          reason: 'Manually flagged by user'
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Failed to flag transaction' }))
+        throw new Error(error.detail || 'Failed to flag transaction')
+      }
+
+      const result = await response.json()
+      toast.success('Transaction flagged as fraud', {
+        description: `Alert ${result.alert_id} created`
+      })
+      onClose()
+      // Refresh page to show new alert
+      window.location.reload()
+    } catch (error: any) {
+      console.error('Flag as fraud error:', error)
+      toast.error('Failed to flag transaction', {
+        description: error.message || 'Please try again'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleMarkAsSafe = async () => {
+    if (!transaction) return
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/v1/alerts/mark-safe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          txn_id: transaction.id,
+          account_id: transaction.account_id,
+          reason: 'Manually marked as safe by user'
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Failed to mark transaction as safe' }))
+        throw new Error(error.detail || 'Failed to mark transaction as safe')
+      }
+
+      const result = await response.json()
+      toast.success('Transaction marked as safe', {
+        description: `${result.updated_alerts} alert(s) dismissed`
+      })
+      onClose()
+      // Refresh page to update alerts
+      window.location.reload()
+    } catch (error: any) {
+      console.error('Mark as safe error:', error)
+      toast.error('Failed to mark transaction as safe', {
+        description: error.message || 'Please try again'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreateCase = async () => {
+    if (!transaction) return
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/v1/cases`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          accountId: transaction.account_id,
+          txnIds: [transaction.id],
+          notes: `Case created from transaction ${transaction.id}: ${transaction.merchant} - ${transaction.currency} ${transaction.amount}`,
+          tags: ['manual-review', 'transaction-investigation']
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Failed to create case' }))
+        throw new Error(error.detail || 'Failed to create case')
+      }
+
+      const result = await response.json()
+      toast.success('Case created successfully', {
+        description: `Case ID: ${result.caseId}`
+      })
+      onClose()
+      // Navigate to cases page
+      window.location.href = `/cases`
+    } catch (error: any) {
+      console.error('Create case error:', error)
+      toast.error('Failed to create case', {
+        description: error.message || 'Please try again'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (!transaction) return null
 
@@ -135,14 +259,26 @@ export function TransactionModal({ transaction, onClose }: TransactionModalProps
 
           {/* Actions */}
           <div className="flex gap-3 pt-4 border-t border-gray-200">
-            <button className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium">
-              Flag as Fraud
+            <button 
+              onClick={handleFlagAsFraud}
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Processing...' : 'Flag as Fraud'}
             </button>
-            <button className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium">
-              Mark as Safe
+            <button 
+              onClick={handleMarkAsSafe}
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Processing...' : 'Mark as Safe'}
             </button>
-            <button className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium">
-              Create Case
+            <button 
+              onClick={handleCreateCase}
+              disabled={loading}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Creating...' : 'Create Case'}
             </button>
           </div>
         </div>

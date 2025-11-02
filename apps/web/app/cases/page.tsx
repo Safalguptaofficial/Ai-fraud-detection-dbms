@@ -45,20 +45,41 @@ export default function CasesPage() {
 
   const fetchCases = async () => {
     try {
+      setLoading(true)
       const headers = getAuthHeaders()
       const url = statusFilter === 'all' 
         ? `${API_URL}/v1/cases`
         : `${API_URL}/v1/cases?status=${statusFilter}`
       
       const res = await fetch(url, { headers })
+      
       if (res.ok) {
         const data = await res.json()
-        setCases(data)
+        setCases(data || [])
+      } else {
+        // Handle non-ok responses
+        let errorMessage = 'Failed to fetch cases'
+        try {
+          const errorData = await res.json()
+          errorMessage = errorData.detail || errorData.message || errorMessage
+        } catch {
+          errorMessage = `Server error: ${res.status} ${res.statusText}`
+        }
+        
+        console.error('Error fetching cases:', res.status, errorMessage)
+        toast.error('Unable to fetch cases', {
+          description: errorMessage
+        })
+        setCases([]) // Set empty array on error
       }
-      setLoading(false)
     } catch (error) {
       console.error('Error fetching cases:', error)
-      toast.error('Failed to fetch cases')
+      const errorMessage = error instanceof Error ? error.message : 'Network error or server unavailable'
+      toast.error('Unable to fetch cases', {
+        description: errorMessage
+      })
+      setCases([]) // Set empty array on error
+    } finally {
       setLoading(false)
     }
   }
@@ -82,12 +103,21 @@ export default function CasesPage() {
       })
 
       if (res.ok) {
-        toast.success('Case created successfully')
+        const result = await res.json()
+        toast.success('Case created successfully', {
+          description: `Case ID: ${result.caseId}`
+        })
         setShowCreateModal(false)
         setNewCase({ accountId: '', txnIds: '', notes: '', tags: '' })
         fetchCases()
       } else {
-        toast.error('Failed to create case')
+        const errorData = await res.json().catch(() => ({}))
+        console.error('Failed to create case:', res.status, errorData)
+        if (res.status === 500) {
+          toast.error('MongoDB connection issue. Please check backend logs.')
+        } else {
+          toast.error(errorData.detail || 'Failed to create case')
+        }
       }
     } catch (error) {
       console.error('Error creating case:', error)

@@ -4,14 +4,37 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 python-multipart==0.0.6
 python-dotenv==1.0.0
 oracledb==2.0.1
 psycopg[binary]==3.1.16
+psycopg2-binary==2.9.11
 pymongo==4.6.0
 redis==5.0.1
 prometheus-client==0.19.0
 python-json-logger==2.0.7
 numpy==1.26.2
 pandas==2.1.4
+email-validator==2.3.0
+
+# Phase 2: OAuth & Authentication
+httpx==0.25.0
+
+# Phase 2: MFA
+pyotp==2.9.0
+qrcode[pil]==7.4.2
+Pillow==10.1.0
+
+# Phase 2: Encryption
+cryptography==41.0.7
+
+# Phase 3: Billing
+stripe==7.0.0
+
+# Phase 3: Data Processing
+openpyxl==3.1.2
+
+# Phase 3: Database Connectors
+mysql-connector-python==8.2.0
 

@@ -12,55 +12,183 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
 
-  // Auto-login for demo
+  // Check for existing valid token
   useEffect(() => {
     const existingToken = localStorage.getItem('auth_token')
-    if (existingToken) {
+    const manualLogout = localStorage.getItem('manual_logout')
+    
+    // If user has a valid token, redirect to dashboard
+    if (existingToken && manualLogout !== 'true') {
       router.push('/dashboard')
       return
     }
 
-    // Auto-create demo login
-    console.log('🔐 Creating demo session...')
-    localStorage.setItem('auth_token', 'demo-token-' + Date.now())
-    localStorage.setItem('user', JSON.stringify({
-      id: 1,
-      username: 'demo',
-      name: 'Demo Analyst',
-      role: 'ANALYST'
-    }))
-    setTimeout(() => router.push('/dashboard'), 500)
+    // Clear any invalid tokens
+    if (manualLogout === 'true') {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user')
+      localStorage.removeItem('tenant')
+      console.log('⏸️ Please sign in')
+    }
   }, [router])
+
+  const handleDemoLogin = async () => {
+    // Clear manual logout flag
+    localStorage.removeItem('manual_logout')
+    setLoading(true)
+    setError('')
+    
+    try {
+      // Add timeout to login request
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+      
+      // Call real login API with demo credentials
+      const response = await fetch(`${API_URL}/api/v1/tenants/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: 'admin@demo.com',
+          password: 'Password123!'
+        }),
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { detail: errorText || `HTTP ${response.status}` }
+        }
+        console.error('Demo login error:', response.status, errorData)
+        throw new Error(errorData.detail || 'Demo login failed')
+      }
+      
+      const data = await response.json()
+      console.log('Demo login response:', data)
+      
+      if (!data.access_token) {
+        throw new Error('Invalid response: No access token received')
+      }
+      
+      // Store real JWT token and user info
+      localStorage.setItem('auth_token', data.access_token)
+      localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.setItem('tenant', JSON.stringify(data.tenant))
+      localStorage.removeItem('manual_logout') // Clear manual logout flag
+      
+      console.log('✅ Demo login successful')
+      console.log('Token stored:', data.access_token.substring(0, 20) + '...')
+      
+      // Use window.location instead of router.push to force full page reload
+      // This ensures the auth hook picks up the new token
+      window.location.href = '/dashboard'
+    } catch (err: any) {
+      console.error('Demo login error:', err)
+      console.error('Error name:', err.name)
+      console.error('Error message:', err.message)
+      
+      let errorMessage = 'Demo login failed. Please try manual login.'
+      
+      if (err.name === 'AbortError' || err.message.includes('timeout')) {
+        errorMessage = 'Login timeout. The server is taking too long to respond. Please check if the backend is running on port 8000.'
+      } else if (err.message.includes('Failed to fetch') || 
+                 err.message.includes('NetworkError') ||
+                 err.message.includes('ERR_CONNECTION_REFUSED') ||
+                 err.message.includes('ERR_INTERNET_DISCONNECTED')) {
+        errorMessage = `Cannot connect to backend API at ${API_URL}. Please ensure the API server is running on port 8000.`
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
+      setLoading(false)
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     
+    // Clear manual logout flag when logging in
+    localStorage.removeItem('manual_logout')
+    
     try {
-      const response = await fetch(`${API_URL}/v1/auth/login`, {
+      // Add timeout to login request
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
+      
+      // Use new multi-tenancy login endpoint
+      const response = await fetch(`${API_URL}/api/v1/tenants/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email, password }),
+        signal: controller.signal
       })
       
+      clearTimeout(timeoutId)
+      
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Login failed')
+        const errorText = await response.text()
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { detail: errorText || `HTTP ${response.status}: ${response.statusText}` }
+        }
+        console.error('Login error response:', response.status, errorData)
+        throw new Error(errorData.detail || `Login failed (${response.status})`)
       }
       
       const data = await response.json()
+      console.log('Login response:', data)
       
-      // Store token and user info
-      localStorage.setItem('auth_token', data.token)
+      if (!data.access_token) {
+        throw new Error('Invalid response: No access token received')
+      }
+      
+      // Store JWT token and user info
+      localStorage.setItem('auth_token', data.access_token)
       localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.setItem('tenant', JSON.stringify(data.tenant))
+      localStorage.removeItem('manual_logout') // Clear manual logout flag
       
-      // Redirect to dashboard
-      router.push('/dashboard')
+      console.log('✅ Login successful:', data.user.email)
+      console.log('Token stored:', data.access_token.substring(0, 20) + '...')
+      
+      // Use window.location instead of router.push to force full page reload
+      // This ensures the auth hook picks up the new token
+      window.location.href = '/dashboard'
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please try again.')
+      console.error('Login error:', err)
+      console.error('Error name:', err.name)
+      console.error('Error message:', err.message)
+      
+      let errorMessage = 'Login failed. Please try again.'
+      
+      if (err.name === 'AbortError' || err.message.includes('timeout')) {
+        errorMessage = 'Login timeout. The server is taking too long to respond. Please check if the backend is running on port 8000.'
+      } else if (err.message.includes('Failed to fetch') || 
+                 err.message.includes('NetworkError') ||
+                 err.message.includes('ERR_CONNECTION_REFUSED') ||
+                 err.message.includes('ERR_INTERNET_DISCONNECTED')) {
+        errorMessage = `Cannot connect to backend API at ${API_URL}. Please ensure the API server is running on port 8000. Check the console for details.`
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
+      // Restore manual logout flag if login fails
+      localStorage.setItem('manual_logout', 'true')
     } finally {
       setLoading(false)
     }
@@ -108,13 +236,20 @@ export default function LoginPage() {
               Demo: analyst@bank.com / password123
             </p>
           </div>
-          <div>
+          <div className="space-y-3">
             <button
               type="submit"
               disabled={loading}
               className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Signing in...' : 'Sign in'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              className="w-full flex justify-center py-2 px-4 border-2 border-blue-600 rounded-md shadow-sm text-sm font-medium text-blue-600 bg-white hover:bg-blue-50"
+            >
+              Quick Demo Login
             </button>
           </div>
         </form>

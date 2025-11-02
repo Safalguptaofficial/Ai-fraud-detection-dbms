@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { getAuthHeaders } from '../utils/auth'
 import { Users, UserPlus, Shield, Edit2, Trash2, Check, X } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -41,7 +42,8 @@ export default function RBACPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch(`${API_URL}/v1/users`)
+      const headers = getAuthHeaders()
+      const response = await fetch(`${API_URL}/v1/users`, { headers })
       if (response.ok) {
         const data = await response.json()
         setUsers(data)
@@ -94,7 +96,10 @@ export default function RBACPage() {
     try {
       const response = await fetch(`${API_URL}/v1/users`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(formData)
       })
       
@@ -125,7 +130,10 @@ export default function RBACPage() {
     try {
       const response = await fetch(`${API_URL}/v1/users/${selectedUser.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify(formData)
       })
       
@@ -150,7 +158,8 @@ export default function RBACPage() {
     
     try {
       const response = await fetch(`${API_URL}/v1/users/${userId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders()
       })
       
       if (response.ok || response.status === 204) {
@@ -167,7 +176,10 @@ export default function RBACPage() {
     try {
       const response = await fetch(`${API_URL}/v1/users/${user.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
         body: JSON.stringify({ is_active: !user.is_active })
       })
       

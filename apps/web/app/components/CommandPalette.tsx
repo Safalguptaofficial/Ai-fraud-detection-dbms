@@ -58,18 +58,27 @@ export function CommandPalette() {
     {
       group: 'Actions',
       items: [
-        { icon: Plus, label: 'Create New Case', shortcut: 'C', action: () => console.log('Create case') },
-        { icon: Download, label: 'Export Data', shortcut: 'E', action: () => console.log('Export') },
+        { icon: Plus, label: 'Create New Case', shortcut: 'C', action: () => navigate('/cases') },
+        { icon: Download, label: 'Export Data', shortcut: 'E', action: () => navigate('/dashboard') },
         { icon: RefreshCw, label: 'Refresh Dashboard', shortcut: 'R', action: () => window.location.reload() },
-        { icon: Filter, label: 'Open Filters', shortcut: 'F', action: () => console.log('Filters') },
-        { icon: Bell, label: 'View Notifications', shortcut: 'N', action: () => console.log('Notifications') },
+        { icon: Filter, label: 'Open Filters', shortcut: 'F', action: () => navigate('/dashboard') },
+        { icon: Bell, label: 'View Notifications', shortcut: 'N', action: () => {
+          // Toggle notification center (if implemented)
+          const event = new CustomEvent('toggleNotifications')
+          window.dispatchEvent(event)
+        }},
       ]
     },
     {
       group: 'Settings',
       items: [
-        { icon: Settings, label: 'Preferences', shortcut: ',', action: () => console.log('Settings') },
-        { icon: LogOut, label: 'Logout', shortcut: 'Q', action: () => navigate('/login') },
+        { icon: Settings, label: 'MFA Security', shortcut: ',', action: () => navigate('/settings/mfa') },
+        { icon: LogOut, label: 'Logout', shortcut: 'Q', action: () => {
+          localStorage.removeItem('auth_token')
+          localStorage.removeItem('user')
+          localStorage.setItem('manual_logout', 'true')
+          navigate('/login')
+        }},
       ]
     }
   ]

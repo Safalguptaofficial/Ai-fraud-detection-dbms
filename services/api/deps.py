@@ -5,7 +5,9 @@ import oracledb
 import psycopg
 from psycopg import Connection as PgConnection
 from pymongo import MongoClient
+from urllib.parse import urlparse
 import redis
+import logging
 from config import settings
 
 
@@ -58,13 +60,61 @@ def get_postgres() -> Generator[PgConnection, None, None]:
             conn.close()
 
 
+# Global MongoDB client to avoid connection issues
+_mongo_client = None
+_mongo_db = None
+
 def get_mongo():
-    client = MongoClient(settings.mongo_uri)
-    try:
-        db = client.get_default_database()
-        yield db
-    finally:
-        client.close()
+    """Get MongoDB database connection (robust, cached, clean)"""
+    global _mongo_client, _mongo_db
+    
+    # Initialize connection only once
+    if _mongo_client is None:
+        try:
+            # Get URI from settings and convert to string explicitly
+            raw_uri = getattr(settings, 'mongo_uri', '')
+            connection_string = str(raw_uri).strip() if raw_uri else ''
+            
+            # Fallback to local if not defined
+            if not connection_string:
+                connection_string = "mongodb://localhost:27017/frauddb"
+            
+            # Normalize hostname: replace Docker 'mongo' hostname with 'localhost'
+            # Use explicit string checks to avoid any method confusion
+            has_mongo_host = "://mongo" in connection_string
+            if has_mongo_host:
+                connection_string = connection_string.replace("://mongo", "://localhost")
+                connection_string = connection_string.replace("/mongo/", "/localhost/")
+                connection_string = connection_string.replace("@mongo:", "@localhost:")
+            
+            # Parse URI properly
+            parsed_result = urlparse(connection_string)
+            path_cleaned = parsed_result.path.lstrip('/')
+            database_name = "frauddb"
+            if path_cleaned:
+                first_part = path_cleaned.split('/')[0]
+                if first_part:
+                    database_name = first_part.split('?')[0]
+            
+            # Create MongoDB client
+            _mongo_client = MongoClient(
+                connection_string,
+                serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=5000,
+                socketTimeoutMS=5000,
+                directConnection=True
+            )
+            
+            # Test connection immediately
+            _mongo_client.admin.command('ping')
+            _mongo_db = _mongo_client[database_name]
+            
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"MongoDB connection error: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"MongoDB connection failed: {str(e)}")
+    
+    yield _mongo_db
 
 
 redis_client: Optional[redis.Redis] = None

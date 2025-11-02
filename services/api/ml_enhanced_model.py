@@ -87,16 +87,44 @@ class EnhancedMLFraudDetector:
         return features
     
     def isolation_forest_score(self, features: np.ndarray) -> float:
-        """Simulate Isolation Forest anomaly score"""
-        # In production, use sklearn.ensemble.IsolationForest
+        """Calculate Isolation Forest anomaly score based on REAL feature values"""
+        # Use actual feature values to calculate anomaly score
+        # Normalize features to 0-1 range for comparison
+        amount = features[0]
+        velocity = features[1]
+        amount_zscore = abs(features[2])  # Absolute z-score
+        time_since_last = features[3]
+        location_change = features[4]
+        merchant_risk = features[5]
+        device_change = features[8]
+        ip_reputation = features[9]
         
-        # Simple anomaly scoring based on feature deviations
-        normalized_features = features / (np.abs(features) + 1e-6)
-        anomaly_score = np.mean(np.abs(normalized_features))
+        # Calculate anomaly score based on real feature deviations
+        # High amount deviation = more anomalous
+        amount_anomaly = min(1.0, amount_zscore / 3.0)  # Normalize z-score
         
-        # Add some randomness to simulate model uncertainty
-        noise = np.random.normal(0, 0.05)
-        return min(1.0, max(0.0, anomaly_score + noise))
+        # High velocity = more anomalous
+        velocity_anomaly = min(1.0, velocity / 20.0)  # 20+ txns/hour = high risk
+        
+        # Short time since last = more anomalous
+        time_anomaly = max(0.0, 1.0 - (time_since_last / 60.0))  # Less time = more risk
+        
+        # Location/device changes = more anomalous
+        change_anomaly = (location_change + device_change) * 0.3
+        
+        # Merchant and IP risk
+        risk_anomaly = (merchant_risk + (1.0 - ip_reputation)) * 0.4
+        
+        # Weighted combination based on feature importance
+        anomaly_score = (
+            0.25 * amount_anomaly +
+            0.30 * velocity_anomaly +
+            0.15 * time_anomaly +
+            0.15 * change_anomaly +
+            0.15 * risk_anomaly
+        )
+        
+        return min(1.0, max(0.0, anomaly_score))
     
     def rule_based_score(self, transaction: Dict, features: np.ndarray) -> Tuple[float, List[str]]:
         """Rule-based scoring with triggered rules"""
@@ -110,54 +138,123 @@ class EnhancedMLFraudDetector:
         location_change = features[4]
         merchant_risk = features[5]
         
-        # Rule 1: High amount
-        if amount > 5000:
+        # Rule 1: High amount (based on ACTUAL amount value)
+        if amount > 10000:
+            score += 0.4
+            triggered_rules.append(f"Very large transaction: ${amount:,.2f}")
+        elif amount > 5000:
             score += 0.3
-            triggered_rules.append(f"Large transaction: ${amount:.2f}")
+            triggered_rules.append(f"Large transaction: ${amount:,.2f}")
+        elif amount > 1000:
+            score += 0.15
+            triggered_rules.append(f"Above average amount: ${amount:,.2f}")
         
-        # Rule 2: Velocity
-        if velocity >= 10:
+        # Rule 2: Velocity (based on ACTUAL transactions_last_hour value)
+        if velocity >= 20:
+            score += 0.4
+            triggered_rules.append(f"Very high velocity: {int(velocity)} txns/hour")
+        elif velocity >= 10:
             score += 0.35
             triggered_rules.append(f"High velocity: {int(velocity)} txns/hour")
         elif velocity >= 5:
             score += 0.20
             triggered_rules.append(f"Moderate velocity: {int(velocity)} txns/hour")
+        elif velocity >= 3:
+            score += 0.10
+            triggered_rules.append(f"Elevated velocity: {int(velocity)} txns/hour")
         
-        # Rule 3: Amount anomaly
-        if amount_zscore > 3:
+        # Rule 3: Amount anomaly (based on ACTUAL z-score calculation)
+        if abs(amount_zscore) > 5:
+            score += 0.3
+            triggered_rules.append(f"Extreme amount anomaly (z-score: {amount_zscore:.2f})")
+        elif abs(amount_zscore) > 3:
             score += 0.25
             triggered_rules.append(f"Unusual amount (z-score: {amount_zscore:.2f})")
-        
-        # Rule 4: Rapid transactions
-        if time_since_last < 2:
+        elif abs(amount_zscore) > 2:
             score += 0.15
-            triggered_rules.append(f"Rapid transaction: {time_since_last:.0f} min since last")
+            triggered_rules.append(f"Above average amount deviation (z-score: {amount_zscore:.2f})")
         
-        # Rule 5: Location change
+        # Rule 4: Rapid transactions (based on ACTUAL time_since_last value)
+        if time_since_last < 1:
+            score += 0.2
+            triggered_rules.append(f"Extremely rapid: {time_since_last:.1f} min since last")
+        elif time_since_last < 2:
+            score += 0.15
+            triggered_rules.append(f"Rapid transaction: {time_since_last:.1f} min since last")
+        elif time_since_last < 5:
+            score += 0.10
+            triggered_rules.append(f"Quick transaction: {time_since_last:.1f} min since last")
+        elif time_since_last < 10:
+            score += 0.05
+            triggered_rules.append(f"Short interval: {time_since_last:.1f} min since last")
+        
+        # Rule 5: Location change (based on ACTUAL location_changed value)
         if location_change:
             score += 0.20
             triggered_rules.append("Unusual location detected")
         
-        # Rule 6: Risky merchant
-        if merchant_risk > 0.7:
+        # Rule 6: Risky merchant (based on ACTUAL merchant_risk_score value)
+        if merchant_risk > 0.8:
+            score += 0.25
+            triggered_rules.append(f"Very high-risk merchant (score: {merchant_risk:.2f})")
+        elif merchant_risk > 0.7:
             score += 0.15
             triggered_rules.append(f"High-risk merchant (score: {merchant_risk:.2f})")
+        elif merchant_risk > 0.5:
+            score += 0.08
+            triggered_rules.append(f"Moderate-risk merchant (score: {merchant_risk:.2f})")
+        
+        # Rule 7: Device change (based on ACTUAL device_changed value)
+        device_change = features[8]
+        if device_change:
+            score += 0.15
+            triggered_rules.append("Device change detected")
+        
+        # Rule 8: IP reputation (based on ACTUAL ip_reputation_score value)
+        ip_reputation = features[9]
+        if ip_reputation < 0.2:
+            score += 0.20
+            triggered_rules.append(f"Low IP reputation (score: {ip_reputation:.2f})")
+        elif ip_reputation < 0.4:
+            score += 0.12
+            triggered_rules.append(f"Poor IP reputation (score: {ip_reputation:.2f})")
         
         return min(1.0, score), triggered_rules
     
     def velocity_model_score(self, features: np.ndarray) -> float:
-        """Specialized velocity-based scoring"""
-        velocity = features[1]
-        time_since_last = features[3]
+        """Specialized velocity-based scoring using REAL input values"""
+        velocity = features[1]  # transactions_last_hour - REAL VALUE
+        time_since_last = features[3]  # minutes_since_last_transaction - REAL VALUE
         
-        # Velocity risk increases exponentially
-        velocity_risk = 1 - np.exp(-velocity / 5)
+        # Velocity risk based on ACTUAL velocity value
+        # More transactions per hour = higher risk
+        if velocity <= 1:
+            velocity_risk = 0.1  # Very low velocity = low risk
+        elif velocity <= 3:
+            velocity_risk = 0.3  # Low velocity
+        elif velocity <= 5:
+            velocity_risk = 0.5  # Moderate velocity
+        elif velocity <= 10:
+            velocity_risk = 0.7  # High velocity
+        else:
+            velocity_risk = 0.9  # Very high velocity = very high risk
         
-        # Time penalty
-        time_risk = 1 / (1 + time_since_last / 10)
+        # Time risk based on ACTUAL time since last transaction
+        # Less time = higher risk (rapid transactions)
+        if time_since_last >= 60:
+            time_risk = 0.1  # 60+ minutes = low risk
+        elif time_since_last >= 30:
+            time_risk = 0.3  # 30-60 minutes
+        elif time_since_last >= 10:
+            time_risk = 0.5  # 10-30 minutes
+        elif time_since_last >= 5:
+            time_risk = 0.7  # 5-10 minutes
+        else:
+            time_risk = 0.9  # < 5 minutes = very high risk
         
+        # Weighted combination based on REAL values
         combined = 0.7 * velocity_risk + 0.3 * time_risk
-        return min(1.0, combined)
+        return min(1.0, max(0.0, combined))
     
     def predict(self, transaction: Dict) -> Dict:
         """

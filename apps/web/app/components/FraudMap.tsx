@@ -50,9 +50,45 @@ export function FraudMap() {
       setMapReady(true)
     }
 
-    // Generate sample fraud locations (in production, fetch from API)
-    const locations: FraudLocation[] = [
-      {
+    // Fetch fraud locations from API
+    const fetchFraudLocations = async () => {
+      try {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+        const token = localStorage.getItem('auth_token')
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        }
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        } else {
+          headers['X-API-Key'] = 'fgk_live_demo_api_key_12345'
+        }
+
+        const response = await fetch(`${API_URL}/v1/network/map?days=30`, { headers })
+        
+        if (response.ok) {
+          const apiData = await response.json()
+          const transformedLocations: FraudLocation[] = apiData.locations.map((loc: any) => ({
+            id: loc.id,
+            lat: loc.lat,
+            lon: loc.lon,
+            city: loc.city,
+            country: loc.country,
+            count: loc.count,
+            totalAmount: loc.totalAmount,
+            severity: loc.severity,
+            recentAlert: loc.recentAlert
+          }))
+          setFraudLocations(transformedLocations)
+          return
+        }
+      } catch (error) {
+        console.error('Error fetching fraud map data:', error)
+      }
+
+      // Fallback to sample data if API fails
+      const locations: FraudLocation[] = [
+        {
         id: 1,
         lat: 40.7128,
         lon: -74.0060,
@@ -155,7 +191,10 @@ export function FraudMap() {
       }
     ]
 
-    setFraudLocations(locations)
+      setFraudLocations(locations)
+    }
+    
+    fetchFraudLocations()
   }, [])
 
   const getColorBySeverity = (severity: string) => {
